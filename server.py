@@ -279,8 +279,14 @@ def load_data_into_cache(workbook_path: str):
     global _parsed_cache
     print(f"  [CACHE] Parsing Excel file to memory...")
     try:
-        names = extract_all_names(workbook_path)
-        months = get_available_months(workbook_path)
+        # Load the workbook ONCE to save memory and prevent OOM errors on Render
+        wb = load_workbook(workbook_path, read_only=True, data_only=True)
+        
+        names = extract_all_names(wb)
+        months = get_available_months(wb)
+        
+        wb.close()
+        
         with _cache_lock:
             _parsed_cache["names"] = names
             _parsed_cache["months"] = months
@@ -290,7 +296,7 @@ def load_data_into_cache(workbook_path: str):
         print(f"  [CACHE] FAIL - Failed to parse: {e}")
         raise e
 
-def extract_all_names(workbook_path: str) -> list[str]:
+def extract_all_names(source) -> list[str]:
     """
     Scans all monthly sheets in the workbook and extracts unique personnel
     names. Validates each row by checking:
@@ -298,7 +304,13 @@ def extract_all_names(workbook_path: str) -> list[str]:
       - Column B: must have a rank (non-empty)
       - Column C: must be a multi-word string (person name)
     """
-    wb = load_workbook(workbook_path, read_only=True, data_only=True)
+    close_wb = False
+    if isinstance(source, str):
+        wb = load_workbook(source, read_only=True, data_only=True)
+        close_wb = True
+    else:
+        wb = source
+        
     names = set()
 
     for sheet_name in wb.sheetnames:
@@ -321,18 +333,27 @@ def extract_all_names(workbook_path: str) -> list[str]:
             name = col_c.strip().upper()
             names.add(name)
 
-    wb.close()
+    if close_wb:
+        wb.close()
     return sorted(names)
 
 
-def get_available_months(workbook_path: str) -> list[dict]:
+def get_available_months(source) -> list[dict]:
     """
     Returns a sorted list of available month sheets from the workbook.
     Each entry has: { "key": "FEB25", "label": "Feb 2025", "date": "2025-02-01" }
     """
-    wb = load_workbook(workbook_path, read_only=True, data_only=True)
+    close_wb = False
+    if isinstance(source, str):
+        wb = load_workbook(source, read_only=True, data_only=True)
+        close_wb = True
+    else:
+        wb = source
+        
     month_map = build_month_sheet_map(wb)
-    wb.close()
+    
+    if close_wb:
+        wb.close()
 
     months = []
     for month_date, sheet_name in sorted(month_map.items()):
