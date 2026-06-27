@@ -134,9 +134,13 @@ def download_from_google_sheets(force: bool = False) -> dict:
         if not data[:2] == b"PK":
             raise ValueError("Downloaded file is not a valid .xlsx (may be an error page)")
 
-        # Write to cache file
+        # Write to temporary file first, then atomically rename
+        # This prevents 'Bad magic number' corruption when multiple workers/processes download at once
+        tmp_file = CACHE_FILE.with_suffix('.xlsx.tmp')
+        tmp_file.write_bytes(data)
+        tmp_file.replace(CACHE_FILE)
+        
         with _cache_lock:
-            CACHE_FILE.write_bytes(data)
             now = datetime.now()
             _cache_info["last_downloaded_at"] = now.isoformat()
             _cache_info["last_downloaded_ts"] = time.time()
@@ -615,6 +619,6 @@ if __name__ == "__main__":
     print(f"  -> {startup_result['message']}\n")
 
     port = int(os.environ.get("PORT", 5000))
-    debug = os.environ.get("FLASK_DEBUG", "true").lower() == "true"
+    debug = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
     print(f"  Starting server at http://localhost:{port}\n")
     app.run(host="0.0.0.0", port=port, debug=debug)
