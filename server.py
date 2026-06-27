@@ -26,6 +26,7 @@ import urllib.error
 from datetime import datetime, date
 from pathlib import Path
 
+import json
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 
@@ -53,8 +54,10 @@ GOOGLE_EXPORT_URL = (
     f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEET_ID}/export?format=xlsx"
 )
 
-# Cached file location (stored in project directory)
+# Cached file locations
 CACHE_FILE = Path(__file__).parent / "_cached_foe_data.xlsx"
+PARSED_JSON_FILE = Path(__file__).parent / "_parsed_data.json"
+LOCK_FILE = Path(__file__).parent / "_parsing.lock"
 CACHE_TTL_SECONDS = 3600  # 1 hour
 
 # Fallback: local Excel file if it exists
@@ -139,6 +142,12 @@ def download_from_google_sheets(force: bool = False) -> dict:
         tmp_file = CACHE_FILE.with_suffix('.xlsx.tmp')
         tmp_file.write_bytes(data)
         tmp_file.replace(CACHE_FILE)
+        
+        # Invalidate JSON cache
+        try:
+            PARSED_JSON_FILE.unlink(missing_ok=True)
+        except Exception:
+            pass
         
         with _cache_lock:
             now = datetime.now()
@@ -277,8 +286,43 @@ def is_valid_name(value) -> bool:
 def load_data_into_cache(workbook_path: str):
     """Parses names and months from the Excel file and caches them in memory."""
     global _parsed_cache
-    print(f"  [CACHE] Parsing Excel file to memory...")
+
+    # 1. Check if parsed JSON exists and is newer than the cached xlsx
+    if PARSED_JSON_FILE.exists() and CACHE_FILE.exists():
+        if os.path.getmtime(PARSED_JSON_FILE) >= os.path.getmtime(CACHE_FILE):
+            try:
+                data = json.loads(PARSED_JSON_FILE.read_text(encoding="utf-8"))
+                with _cache_lock:
+                    _parsed_cache["names"] = data.get("names", [])
+                    _parsed_cache["months"] = data.get("months", [])
+                    _parsed_cache["loaded_ts"] = time.time()
+                return
+            except Exception:
+                pass # corrupted json, proceed to re-parse
+
+    # 2. Try to acquire cross-process lock
+    lock_fd = None
     try:
+        lock_fd = os.open(str(LOCK_FILE), os.O_CREAT | os.O_EXCL | os.O_RDWR)
+    except FileExistsError:
+        # Another worker is parsing! Wait for them to finish and write the JSON.
+        print("  [CACHE] Another worker is parsing. Waiting...")
+        for _ in range(60):  # wait up to 30 seconds
+            time.sleep(0.5)
+            if PARSED_JSON_FILE.exists() and os.path.getmtime(PARSED_JSON_FILE) >= os.path.getmtime(CACHE_FILE):
+                try:
+                    data = json.loads(PARSED_JSON_FILE.read_text(encoding="utf-8"))
+                    with _cache_lock:
+                        _parsed_cache["names"] = data.get("names", [])
+                        _parsed_cache["months"] = data.get("months", [])
+                        _parsed_cache["loaded_ts"] = time.time()
+                    return
+                except Exception:
+                    pass
+        # If we reach here, the other worker took too long or crashed. Proceed.
+
+    try:
+        print(f"  [CACHE] Parsing Excel file to memory...")
         # Load the workbook ONCE to save memory and prevent OOM errors on Render
         wb = load_workbook(workbook_path, read_only=True, data_only=True)
         
@@ -286,15 +330,29 @@ def load_data_into_cache(workbook_path: str):
         months = get_available_months(wb)
         
         wb.close()
+
+        # Write to temp json then atomic replace for cross-process safety
+        tmp_json = PARSED_JSON_FILE.with_suffix(".tmp")
+        tmp_json.write_text(json.dumps({"names": names, "months": months}), encoding="utf-8")
+        tmp_json.replace(PARSED_JSON_FILE)
         
         with _cache_lock:
             _parsed_cache["names"] = names
             _parsed_cache["months"] = months
             _parsed_cache["loaded_ts"] = time.time()
+            
         print(f"  [CACHE] -> Loaded {len(names)} names and {len(months)} months")
     except Exception as e:
         print(f"  [CACHE] FAIL - Failed to parse: {e}")
         raise e
+    finally:
+        # Always release the lock
+        if lock_fd is not None:
+            os.close(lock_fd)
+            try:
+                LOCK_FILE.unlink()
+            except FileNotFoundError:
+                pass
 
 def extract_all_names(source) -> list[str]:
     """
