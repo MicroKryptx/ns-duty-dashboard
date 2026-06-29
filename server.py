@@ -162,16 +162,62 @@ class DutyDataStore:
         self._refresh_thread: threading.Thread | None = None
         self._index: dict[str, Any] | None = None
         self._refreshing = False
+        self._progress = self._make_progress(
+            phase="idle",
+            message="Waiting for data refresh.",
+            percent=0,
+        )
         self._last_error: str | None = None
         self._last_refresh_started_at: str | None = None
         self._last_refresh_finished_at: str | None = None
 
     # ----- state -----------------------------------------------------------
 
+    def _make_progress(
+        self,
+        *,
+        phase: str,
+        message: str,
+        percent: int | None,
+        current_sheet: str | None = None,
+        completed_sheets: int = 0,
+        total_sheets: int = 0,
+    ) -> dict[str, Any]:
+        return {
+            "phase": phase,
+            "message": message,
+            "percent": percent,
+            "current_sheet": current_sheet,
+            "completed_sheets": completed_sheets,
+            "total_sheets": total_sheets,
+            "updated_at": utcish_now_iso(),
+        }
+
+    def _set_progress(
+        self,
+        *,
+        phase: str,
+        message: str,
+        percent: int | None,
+        current_sheet: str | None = None,
+        completed_sheets: int = 0,
+        total_sheets: int = 0,
+    ) -> None:
+        with self._lock:
+            self._progress = self._make_progress(
+                phase=phase,
+                message=message,
+                percent=percent,
+                current_sheet=current_sheet,
+                completed_sheets=completed_sheets,
+                total_sheets=total_sheets,
+            )
+
     def status(self) -> dict[str, Any]:
         with self._lock:
             index = self._index
             refreshing = self._refreshing
+            progress = dict(self._progress)
             error = self._last_error
             started = self._last_refresh_started_at
             finished = self._last_refresh_finished_at
@@ -200,6 +246,7 @@ class DutyDataStore:
             "age_seconds": age_seconds,
             "ttl_seconds": CACHE_TTL_SECONDS,
             "is_stale": age_seconds is not None and age_seconds > CACHE_TTL_SECONDS,
+            "progress": progress,
             "error": error,
             "last_refresh_started_at": started,
             "last_refresh_finished_at": finished,
@@ -241,6 +288,13 @@ class DutyDataStore:
         if loaded:
             with self._lock:
                 self._index = loaded
+                self._progress = self._make_progress(
+                    phase="ready",
+                    message="Duty index loaded from cache.",
+                    percent=100,
+                    completed_sheets=loaded.get("stats", {}).get("months", 0),
+                    total_sheets=loaded.get("stats", {}).get("months", 0),
+                )
             return True
         return False
 
@@ -252,6 +306,11 @@ class DutyDataStore:
                 return False
             self._refreshing = True
             self._last_refresh_started_at = utcish_now_iso()
+            self._progress = self._make_progress(
+                phase="queued",
+                message="Refresh queued.",
+                percent=0,
+            )
             self._refresh_thread = threading.Thread(
                 target=self._refresh_worker,
                 kwargs={"force": force},
@@ -268,6 +327,11 @@ class DutyDataStore:
             else:
                 self._refreshing = True
                 self._last_refresh_started_at = utcish_now_iso()
+                self._progress = self._make_progress(
+                    phase="queued",
+                    message="Refresh queued.",
+                    percent=0,
+                )
                 thread = None
 
         if thread:
@@ -288,9 +352,23 @@ class DutyDataStore:
                     self._load_or_build_from_available_source(source_hint="google_sheets")
                 elif self._index is None:
                     self._load_or_build_from_available_source(source_hint=None)
+                else:
+                    month_count = self._index.get("stats", {}).get("months", 0)
+                    self._set_progress(
+                        phase="ready",
+                        message="Using cached duty index after refresh fallback.",
+                        percent=100,
+                        completed_sheets=month_count,
+                        total_sheets=month_count,
+                    )
         except Exception as exc:
             with self._lock:
                 self._last_error = str(exc)
+                self._progress = self._make_progress(
+                    phase="error",
+                    message=f"Refresh failed: {exc}",
+                    percent=None,
+                )
         finally:
             with self._lock:
                 self._refreshing = False
@@ -301,6 +379,11 @@ class DutyDataStore:
             return {"status": "cached", "message": "Workbook cache is fresh."}
 
         try:
+            self._set_progress(
+                phase="downloading",
+                message="Downloading workbook from Google Sheets...",
+                percent=None,
+            )
             req = urllib.request.Request(
                 GOOGLE_EXPORT_URL,
                 headers={"User-Agent": "FOE-Duty-Dashboard/2.0"},
@@ -312,6 +395,11 @@ class DutyDataStore:
                 raise ValueError("Downloaded response is not a valid .xlsx file.")
 
             atomic_write_bytes(CACHE_FILE, payload)
+            self._set_progress(
+                phase="downloaded",
+                message="Workbook downloaded. Preparing to rebuild duty index...",
+                percent=5,
+            )
             with self._lock:
                 self._last_error = None
             return {
@@ -321,6 +409,11 @@ class DutyDataStore:
         except Exception as exc:
             with self._lock:
                 self._last_error = str(exc)
+                self._progress = self._make_progress(
+                    phase="download_failed",
+                    message="Google Sheets download failed. Falling back to cached data if available.",
+                    percent=None,
+                )
             return {
                 "status": "fallback_cached" if CACHE_FILE.exists() else "error",
                 "message": f"Google Sheets refresh failed: {exc}",
@@ -341,13 +434,35 @@ class DutyDataStore:
         if loaded:
             with self._lock:
                 self._index = loaded
+                self._progress = self._make_progress(
+                    phase="ready",
+                    message="Duty index loaded from cache.",
+                    percent=100,
+                    completed_sheets=loaded.get("stats", {}).get("months", 0),
+                    total_sheets=loaded.get("stats", {}).get("months", 0),
+                )
             return
 
         source = source_hint or ("cached" if source_path == CACHE_FILE else "local_fallback")
         index = self._build_index(source_path, source)
+        self._set_progress(
+            phase="writing_index",
+            message="Writing optimized duty index...",
+            percent=98,
+            completed_sheets=index.get("stats", {}).get("months", 0),
+            total_sheets=index.get("stats", {}).get("months", 0),
+        )
         atomic_write_json(INDEX_FILE, index)
         with self._lock:
             self._index = index
+            month_count = index.get("stats", {}).get("months", 0)
+            self._progress = self._make_progress(
+                phase="ready",
+                message="Duty index is ready.",
+                percent=100,
+                completed_sheets=month_count,
+                total_sheets=month_count,
+            )
 
     def _load_index_if_current(self, source_path: Path) -> dict[str, Any] | None:
         if not INDEX_FILE.exists():
@@ -367,6 +482,11 @@ class DutyDataStore:
         workbook_fingerprint = file_fingerprint(workbook_path)
         workbook_cached_at = datetime.fromtimestamp(workbook_fingerprint["mtime"]).isoformat()
 
+        self._set_progress(
+            phase="loading_workbook",
+            message=f"Opening {workbook_path.name}...",
+            percent=None,
+        )
         wb = load_workbook(workbook_path, read_only=True, data_only=True)
         try:
             month_to_sheet: dict[date, str] = {}
@@ -389,9 +509,20 @@ class DutyDataStore:
 
             people: dict[str, dict[str, Any]] = {}
             total_hits = 0
+            ordered_months = sorted(month_to_sheet)
+            total_sheets = len(ordered_months)
 
-            for month in sorted(month_to_sheet):
+            for sheet_index, month in enumerate(ordered_months, start=1):
                 sheet_name = month_to_sheet[month]
+                percent = 5 + int(((sheet_index - 1) / max(total_sheets, 1)) * 90)
+                self._set_progress(
+                    phase="scanning_sheets",
+                    message=f"Scanning {sheet_name}...",
+                    percent=percent,
+                    current_sheet=sheet_name,
+                    completed_sheets=sheet_index - 1,
+                    total_sheets=total_sheets,
+                )
                 ws = wb[sheet_name]
                 current_gen = ""
                 days_in_month = calendar.monthrange(month.year, month.month)[1]
@@ -492,6 +623,16 @@ class DutyDataStore:
                             "hits": hits,
                         }
                     )
+
+                done_percent = 5 + int((sheet_index / max(total_sheets, 1)) * 90)
+                self._set_progress(
+                    phase="scanning_sheets",
+                    message=f"Finished {sheet_name}.",
+                    percent=done_percent,
+                    current_sheet=sheet_name,
+                    completed_sheets=sheet_index,
+                    total_sheets=total_sheets,
+                )
 
             elapsed = time.perf_counter() - started
             names = sorted(people.keys())
