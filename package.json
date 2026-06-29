@@ -1,0 +1,11 @@
+{
+  "name": "duty-dashboard-service",
+  "private": true,
+  "version": "1.0.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "cd dashboard && npm ci --include=dev && npm run build"
+  }
+}
