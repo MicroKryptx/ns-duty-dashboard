@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+_duty_index*.json
+_parsing.lock
+*.tmp
+dashboard/node_modules/
+dashboard/.vite/
