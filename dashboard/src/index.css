@@ -304,6 +304,75 @@ header p {
   color: var(--badge-friday-text);
 }
 
+.index-progress {
+  width: 100%;
+  margin: 18px 0 4px;
+  text-align: left;
+}
+
+.index-progress.compact {
+  min-width: 260px;
+  max-width: 360px;
+  margin: 0 0 8px auto;
+}
+
+.index-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.index-progress-meta span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.index-progress-meta strong {
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.index-progress-track {
+  position: relative;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--input-bg);
+  border: 1px solid var(--card-border);
+}
+
+.index-progress-fill {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--primary), var(--info), var(--success));
+  transition: width 0.35s ease;
+}
+
+.index-progress-track.indeterminate .index-progress-fill {
+  position: absolute;
+  width: 42%;
+  animation: progressSlide 1.1s ease-in-out infinite;
+}
+
+.index-progress-detail {
+  margin-top: 7px;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 500;
+}
+
+@keyframes progressSlide {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(260%); }
+}
+
 /* ===== Name Selection Screen ===== */
 .selection-screen {
   display: flex;

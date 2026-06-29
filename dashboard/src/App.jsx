@@ -130,7 +130,7 @@ function DataStatusNotice({ dataStatus }) {
   if (!dataStatus) return null;
 
   const messages = [];
-  if (dataStatus.warming) messages.push('Preparing the duty index. This usually happens once after a cold start.');
+  if (dataStatus.warming) messages.push(dataStatus.progress?.message || 'Preparing the duty index. This usually happens once after a cold start.');
   if (dataStatus.refreshing && dataStatus.ready) messages.push('Refreshing Google Sheets in the background. Current data remains usable.');
   if (dataStatus.is_stale && dataStatus.ready) messages.push('Using cached data while the service refreshes.');
   if (dataStatus.error) messages.push(`Last refresh issue: ${dataStatus.error}`);
@@ -140,6 +140,43 @@ function DataStatusNotice({ dataStatus }) {
     <div className={`status-notice ${dataStatus.error ? 'error' : ''}`}>
       <AlertCircle size={15} />
       <span>{messages[0]}</span>
+    </div>
+  );
+}
+
+function IndexProgress({ dataStatus, compact = false }) {
+  const progress = dataStatus?.progress;
+  if (!progress) return null;
+
+  const isActive = dataStatus?.warming || dataStatus?.refreshing || ['loading_workbook', 'downloading', 'scanning_sheets', 'writing_index'].includes(progress.phase);
+  if (!isActive && progress.phase !== 'error' && progress.phase !== 'download_failed') return null;
+
+  const percent = typeof progress.percent === 'number'
+    ? Math.max(0, Math.min(100, progress.percent))
+    : null;
+  const sheetText = progress.total_sheets > 0
+    ? `${progress.completed_sheets} / ${progress.total_sheets} sheets`
+    : '';
+
+  return (
+    <div className={`index-progress ${compact ? 'compact' : ''}`}>
+      <div className="index-progress-meta">
+        <span>{progress.message || 'Preparing duty index...'}</span>
+        <strong>{percent === null ? 'Working...' : `${percent}%`}</strong>
+      </div>
+      <div className={`index-progress-track ${percent === null ? 'indeterminate' : ''}`}>
+        <div
+          className="index-progress-fill"
+          style={percent === null ? undefined : { width: `${percent}%` }}
+        />
+      </div>
+      {(sheetText || progress.current_sheet) && (
+        <div className="index-progress-detail">
+          {sheetText}
+          {sheetText && progress.current_sheet ? ' - ' : ''}
+          {progress.current_sheet || ''}
+        </div>
+      )}
     </div>
   );
 }
@@ -223,6 +260,7 @@ function NameSelection({
               <p style={{ marginTop: '16px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
                 Preparing cached duty data for fast lookups...
               </p>
+              <IndexProgress dataStatus={dataStatus} />
             </div>
           ) : error ? (
             <div style={{ padding: '20px 0' }}>
@@ -625,6 +663,7 @@ function App() {
             <div style={{ textAlign: 'right' }}>
               <DataFreshnessBadge dataStatus={dataStatus} />
               <DataStatusNotice dataStatus={dataStatus} />
+              <IndexProgress dataStatus={dataStatus} compact />
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
                 Report generated: {new Date(metadata.generated_at).toLocaleTimeString()}
               </div>
