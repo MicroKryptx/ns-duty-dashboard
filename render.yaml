@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: duty-dashboard
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt && cd dashboard && npm ci --include=dev && npm run build
+    startCommand: gunicorn server:app --config gunicorn.conf.py --bind 0.0.0.0:$PORT
+    healthCheckPath: /api/healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: NODE_VERSION
+        value: 22.12.0
+      - key: STARTUP_BACKGROUND_REFRESH
+        value: "true"
+      - key: CACHE_TTL_SECONDS
+        value: "3600"
+      - key: DOWNLOAD_TIMEOUT_SECONDS
+        value: "12"
