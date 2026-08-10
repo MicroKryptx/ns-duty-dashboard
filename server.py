@@ -22,7 +22,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, Response, stream_with_context
 from flask_cors import CORS
 from openpyxl import load_workbook
 
@@ -63,6 +63,7 @@ LOCAL_FALLBACK = BASE_DIR / "FOE 2026.xlsx"
 DASHBOARD_DIR = BASE_DIR / "dashboard" / "dist"
 
 CACHE_TTL_SECONDS = int(os.environ.get("CACHE_TTL_SECONDS", "3600"))
+REFRESH_COOLDOWN_SECONDS = int(os.environ.get("REFRESH_COOLDOWN_SECONDS", "180"))  # 3 minutes cooldown
 DOWNLOAD_TIMEOUT_SECONDS = int(os.environ.get("DOWNLOAD_TIMEOUT_SECONDS", "12"))
 STARTUP_BACKGROUND_REFRESH = (
     os.environ.get("STARTUP_BACKGROUND_REFRESH", "true").strip().lower()
@@ -72,6 +73,118 @@ STARTUP_BACKGROUND_REFRESH = (
 DEFAULT_START = "FEB25"
 INDEX_SCHEMA_VERSION = 1
 SHEET_NAME_RE = re.compile(r"^[A-Z]{3}\d{2}$")
+
+
+# ---------------------------------------------------------------------------
+# Duty points matrix
+# ---------------------------------------------------------------------------
+
+DUTY_POINTS = {
+    "Guard": {
+        "Monday": 0.2, "Tuesday": 0.2, "Wednesday": 0.2,
+        "Thursday": 0.2, "Friday": 0.2,
+        "Saturday": 0.4,
+        "Sunday": 0.3,
+    },
+    "BDS": {
+        "Monday": 0.0, "Tuesday": 0.0, "Wednesday": 0.0,
+        "Thursday": 0.0, "Friday": 0.0,
+        "Saturday": 0.25,
+        "Sunday": 0.25,
+    },
+}
+
+POINTS_PER_OFF = 5.0  # 5 points = 1 off-day
+
+
+def compute_duty_points(hits: list[dict[str, Any]]) -> dict[str, Any]:
+    """Compute duty points breakdown from a list of duty hits."""
+    breakdown = {
+        "Guard": {
+            "weekday": {"count": 0, "points": 0.0},
+            "saturday": {"count": 0, "points": 0.0},
+            "sunday": {"count": 0, "points": 0.0},
+        },
+        "BDS": {
+            "weekday": {"count": 0, "points": 0.0},
+            "saturday": {"count": 0, "points": 0.0},
+            "sunday": {"count": 0, "points": 0.0},
+        },
+    }
+
+    for hit in hits:
+        duty_type = hit.get("duty_type", "")
+        day_name = hit.get("day", "")
+
+        if duty_type not in DUTY_POINTS:
+            continue
+
+        pts = DUTY_POINTS[duty_type].get(day_name, 0.0)
+
+        if day_name == "Saturday":
+            category = "saturday"
+        elif day_name == "Sunday":
+            category = "sunday"
+        else:
+            category = "weekday"
+
+        breakdown[duty_type][category]["count"] += 1
+        breakdown[duty_type][category]["points"] += pts
+
+    guard_total = sum(v["points"] for v in breakdown["Guard"].values())
+    bds_total = sum(v["points"] for v in breakdown["BDS"].values())
+    grand_total = guard_total + bds_total
+
+    guard_count = sum(v["count"] for v in breakdown["Guard"].values())
+    bds_count = sum(v["count"] for v in breakdown["BDS"].values())
+
+    remainder = grand_total % POINTS_PER_OFF
+
+    return {
+        "breakdown": breakdown,
+        "guard_total_points": round(guard_total, 2),
+        "bds_total_points": round(bds_total, 2),
+        "grand_total_points": round(grand_total, 2),
+        "guard_total_duties": guard_count,
+        "bds_total_duties": bds_count,
+        "estimated_offs": round(grand_total / POINTS_PER_OFF, 2),
+        "full_offs": int(grand_total // POINTS_PER_OFF),
+        "remaining_points": round(remainder, 2),
+        "points_to_next_off": round(POINTS_PER_OFF - remainder, 2) if remainder > 0 else 0.0,
+        "points_per_off": POINTS_PER_OFF,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Startup cleanup
+# ---------------------------------------------------------------------------
+
+def _startup_cleanup():
+    """Remove stale lock files and temp files left by crashed workers."""
+    stale_threshold = 300  # 5 minutes
+
+    # Remove stale lock file
+    lock_path = DATA_DIR / "_parsing.lock"
+    if lock_path.exists():
+        try:
+            age = time.time() - lock_path.stat().st_mtime
+            if age > stale_threshold:
+                lock_path.unlink()
+                print(f"  [CLEANUP] Removed stale lock file ({int(age)}s old)")
+        except Exception:
+            pass
+
+    # Remove any .tmp files
+    for tmp in DATA_DIR.glob("*.tmp"):
+        try:
+            age = time.time() - tmp.stat().st_mtime
+            if age > stale_threshold:
+                tmp.unlink()
+                print(f"  [CLEANUP] Removed stale temp file: {tmp.name}")
+        except Exception:
+            pass
+
+_startup_cleanup()
 
 
 # ---------------------------------------------------------------------------
@@ -170,6 +283,7 @@ class DutyDataStore:
         self._last_error: str | None = None
         self._last_refresh_started_at: str | None = None
         self._last_refresh_finished_at: str | None = None
+        self._last_explicit_refresh_time: float = 0.0
 
     # ----- state -----------------------------------------------------------
 
@@ -246,6 +360,8 @@ class DutyDataStore:
             "age_seconds": age_seconds,
             "ttl_seconds": CACHE_TTL_SECONDS,
             "is_stale": age_seconds is not None and age_seconds > CACHE_TTL_SECONDS,
+            "cooldown_remaining": self.get_refresh_cooldown_remaining(),
+            "cooldown_seconds": REFRESH_COOLDOWN_SECONDS,
             "progress": progress,
             "error": error,
             "last_refresh_started_at": started,
@@ -297,6 +413,19 @@ class DutyDataStore:
                 )
             return True
         return False
+
+    def get_refresh_cooldown_remaining(self) -> int:
+        with self._lock:
+            if self._last_explicit_refresh_time == 0.0:
+                return 0
+            elapsed = time.time() - self._last_explicit_refresh_time
+            if elapsed < REFRESH_COOLDOWN_SECONDS:
+                return int(REFRESH_COOLDOWN_SECONDS - elapsed)
+            return 0
+
+    def record_explicit_refresh(self) -> None:
+        with self._lock:
+            self._last_explicit_refresh_time = time.time()
 
     def ensure_background_refresh(self, *, force: bool) -> bool:
         with self._lock:
@@ -731,6 +860,9 @@ class DutyDataStore:
         for number, hit in enumerate(hits, start=1):
             public_hit = {key: value for key, value in hit.items() if not key.startswith("_")}
             public_hit["number"] = number
+            day_name = hit.get("day", "")
+            duty_type = hit.get("duty_type", "")
+            public_hit["points"] = DUTY_POINTS.get(duty_type, {}).get(day_name, 0.0)
             duties.append(public_hit)
 
         total_guard = sum(hit["duty_type"] == "Guard" for hit in hits)
@@ -738,6 +870,8 @@ class DutyDataStore:
         weekdays = sum(hit["day_type"] == "Weekday" for hit in hits)
         fridays = sum(hit["day_type"] == "Friday" for hit in hits)
         weekends = sum(hit["day_type"] == "Weekend" for hit in hits)
+
+        points = compute_duty_points(hits)
 
         payload = {
             "valid": True,
@@ -757,6 +891,7 @@ class DutyDataStore:
                 "fridays": fridays,
                 "weekends": weekends,
             },
+            "points": points,
             "duties": duties,
             "details": validation,
             "data_status": self.status(),
@@ -823,8 +958,11 @@ store.load_persisted_index()
 # Flask app
 # ---------------------------------------------------------------------------
 
+from flask_compress import Compress
+
 app = Flask(__name__, static_folder=str(DASHBOARD_DIR), static_url_path="")
 CORS(app)
+Compress(app)
 
 
 def parse_range_from_request(body: dict[str, Any]) -> tuple[date, date]:
@@ -921,8 +1059,51 @@ def get_duties():
         return jsonify({"error": str(exc), "data_status": store.status()}), 500
 
 
+@app.route("/api/compare", methods=["POST"])
+def compare_duties():
+    """Compare duties between 2 people over the same date range."""
+    body = request.get_json(silent=True) or {}
+    compare_names = body.get("names", [])
+    if not isinstance(compare_names, list) or len(compare_names) != 2:
+        return jsonify({"error": "Provide exactly 2 names to compare."}), 400
+
+    try:
+        start, end = parse_range_from_request(body)
+        results = []
+        for name in compare_names:
+            payload, _val = store.build_duty_payload(
+                target_name=name.strip(),
+                target_gen=body.get("gen", ""),
+                start=start,
+                end=end,
+            )
+            results.append(payload)
+
+        return jsonify({
+            "comparison": results,
+            "data_status": store.status(),
+        })
+    except DutyNotReady:
+        return not_ready_response()
+    except ValueError as exc:
+        return jsonify({"error": str(exc), "data_status": store.status()}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc), "data_status": store.status()}), 500
+
+
 @app.route("/api/refresh", methods=["POST"])
 def refresh_data():
+    remaining = store.get_refresh_cooldown_remaining()
+    if remaining > 0:
+        return jsonify({
+            "status": "rate_limited",
+            "message": f"Refresh is on cooldown. Please wait {remaining} seconds before refreshing again.",
+            "remaining_seconds": remaining,
+            "cooldown_seconds": REFRESH_COOLDOWN_SECONDS,
+            "data_status": store.status(),
+        }), 429
+
+    store.record_explicit_refresh()
     wait = request.args.get("wait", "").strip().lower() in {"1", "true", "yes"}
     if wait:
         status = store.refresh_blocking(force=True)
@@ -942,6 +1123,67 @@ def refresh_data():
         ),
         "data_status": store.status(),
     })
+
+
+@app.route("/api/refresh/stream", methods=["GET"])
+def refresh_stream():
+    """SSE endpoint that streams refresh progress events."""
+    remaining = store.get_refresh_cooldown_remaining()
+    if remaining > 0:
+        def generate_rate_limited():
+            event_data = json.dumps({
+                "phase": "rate_limited",
+                "message": f"Refresh is on cooldown. Please wait {remaining} seconds before refreshing again.",
+                "remaining_seconds": remaining,
+                "refreshing": False,
+                "ready": store.status().get("ready", True),
+            })
+            yield f"data: {event_data}\n\n"
+
+        return Response(
+            stream_with_context(generate_rate_limited()),
+            mimetype="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    store.record_explicit_refresh()
+    def generate():
+        store.ensure_background_refresh(force=True)
+        last_phase = None
+        for _ in range(120):  # max 60 seconds (0.5s intervals)
+            status = store.status()
+            progress = status.get("progress", {})
+            current_phase = progress.get("phase")
+
+            if current_phase != last_phase or current_phase == "scanning_sheets":
+                event_data = json.dumps({
+                    "phase": current_phase,
+                    "message": progress.get("message", ""),
+                    "percent": progress.get("percent"),
+                    "completed_sheets": progress.get("completed_sheets", 0),
+                    "total_sheets": progress.get("total_sheets", 0),
+                    "ready": status.get("ready", False),
+                    "refreshing": status.get("refreshing", False),
+                })
+                yield f"data: {event_data}\n\n"
+                last_phase = current_phase
+
+            if not status.get("refreshing", False):
+                yield f"data: {json.dumps({'phase': 'done', 'ready': True})}\n\n"
+                break
+            time.sleep(0.5)
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.route("/api/status", methods=["GET"])

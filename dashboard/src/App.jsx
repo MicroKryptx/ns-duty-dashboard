@@ -4,6 +4,7 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowUpDown,
+  Award,
   Calendar,
   CalendarRange,
   CheckCircle,
@@ -19,6 +20,7 @@ import {
   Shield,
   SlidersHorizontal,
   Sun,
+  Users,
 } from 'lucide-react';
 
 function getStoredTheme() {
@@ -88,7 +90,7 @@ function csvValue(value) {
 }
 
 function downloadDutiesCsv(rows, name) {
-  const headers = ['#', 'Date', 'Day', 'Day Category', 'Duty Type', 'Entry Details', 'Sheet', 'Row'];
+  const headers = ['#', 'Date', 'Day', 'Day Category', 'Duty Type', 'Entry Details', 'Points', 'Sheet', 'Row'];
   const body = rows.map((row, index) => [
     index + 1,
     row.date_label,
@@ -96,6 +98,7 @@ function downloadDutiesCsv(rows, name) {
     row.day_type,
     row.duty_type,
     row.duty_display,
+    (row.points ?? 0).toFixed(2),
     row.sheet,
     row.row,
   ]);
@@ -109,6 +112,168 @@ function downloadDutiesCsv(rows, name) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function DutyPointsSection({ points }) {
+  const [view, setView] = useState('simplified');
+
+  if (!points) return null;
+
+  const progressPercent = Math.min(
+    ((points.remaining_points / points.points_per_off) * 100),
+    100
+  );
+
+  return (
+    <section className="points-section">
+      <div className="points-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <Award size={20} style={{ color: 'var(--warning)' }} />
+          <h3>Duty Points & Compensation</h3>
+        </div>
+        <div className="points-view-toggle">
+          <button
+            className={view === 'simplified' ? 'active' : ''}
+            onClick={() => setView('simplified')}
+          >
+            Simplified
+          </button>
+          <button
+            className={view === 'detailed' ? 'active' : ''}
+            onClick={() => setView('detailed')}
+          >
+            Detailed
+          </button>
+        </div>
+      </div>
+
+      {view === 'simplified' && (
+        <div className="points-simplified">
+          <div className="points-summary-cards">
+            <div className="points-big-card">
+              <span className="points-big-value">
+                {points.grand_total_points}
+              </span>
+              <span className="points-big-label">Total Points</span>
+            </div>
+            <div className="points-big-card offs">
+              <span className="points-big-value">
+                {points.full_offs}
+              </span>
+              <span className="points-big-label">Off Days Earned</span>
+            </div>
+          </div>
+
+          <div className="points-progress-section">
+            <div className="points-progress-label">
+              <span>Progress to next off</span>
+              <span>{points.remaining_points} / {points.points_per_off} pts</span>
+            </div>
+            <div className="points-progress-track">
+              <div
+                className="points-progress-fill"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+            <span className="points-progress-hint">
+              {points.points_to_next_off > 0
+                ? `${points.points_to_next_off} more points needed for next off`
+                : 'Off day threshold reached!'}
+            </span>
+          </div>
+
+          <div className="points-quick-row">
+            <div className="points-quick-item">
+              <Shield size={14} style={{ color: 'var(--info)' }} />
+              <span>Guard: <strong>{points.guard_total_points} pts</strong> ({points.guard_total_duties} duties)</span>
+            </div>
+            <div className="points-quick-item">
+              <Activity size={14} style={{ color: 'var(--success)' }} />
+              <span>BDS: <strong>{points.bds_total_points} pts</strong> ({points.bds_total_duties} duties)</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {view === 'detailed' && (
+        <div className="points-detailed">
+          <table className="points-table">
+            <thead>
+              <tr>
+                <th>Duty Type</th>
+                <th>Day Category</th>
+                <th>Duties</th>
+                <th>Pts/Duty</th>
+                <th>Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="points-row guard">
+                <td rowSpan={3}>
+                  <span className="badge badge-guard">Guard</span>
+                </td>
+                <td>Weekday (Mon-Fri)</td>
+                <td>{points.breakdown.Guard.weekday.count}</td>
+                <td>0.20</td>
+                <td>{points.breakdown.Guard.weekday.points.toFixed(2)}</td>
+              </tr>
+              <tr className="points-row guard">
+                <td>Saturday</td>
+                <td>{points.breakdown.Guard.saturday.count}</td>
+                <td>0.40</td>
+                <td>{points.breakdown.Guard.saturday.points.toFixed(2)}</td>
+              </tr>
+              <tr className="points-row guard">
+                <td>Sunday</td>
+                <td>{points.breakdown.Guard.sunday.count}</td>
+                <td>0.30</td>
+                <td>{points.breakdown.Guard.sunday.points.toFixed(2)}</td>
+              </tr>
+              <tr className="points-subtotal">
+                <td colSpan={4}>Guard Subtotal</td>
+                <td><strong>{points.guard_total_points.toFixed(2)}</strong></td>
+              </tr>
+
+              <tr className="points-row bds">
+                <td rowSpan={3}>
+                  <span className="badge badge-bds">BDS</span>
+                </td>
+                <td>Weekday (Mon-Fri)</td>
+                <td>{points.breakdown.BDS.weekday.count}</td>
+                <td>0.00</td>
+                <td>{points.breakdown.BDS.weekday.points.toFixed(2)}</td>
+              </tr>
+              <tr className="points-row bds">
+                <td>Saturday</td>
+                <td>{points.breakdown.BDS.saturday.count}</td>
+                <td>0.25</td>
+                <td>{points.breakdown.BDS.saturday.points.toFixed(2)}</td>
+              </tr>
+              <tr className="points-row bds">
+                <td>Sunday</td>
+                <td>{points.breakdown.BDS.sunday.count}</td>
+                <td>0.25</td>
+                <td>{points.breakdown.BDS.sunday.points.toFixed(2)}</td>
+              </tr>
+              <tr className="points-subtotal">
+                <td colSpan={4}>BDS Subtotal</td>
+                <td><strong>{points.bds_total_points.toFixed(2)}</strong></td>
+              </tr>
+
+              <tr className="points-grand-total">
+                <td colSpan={4}>Grand Total</td>
+                <td><strong>{points.grand_total_points.toFixed(2)}</strong></td>
+              </tr>
+              <tr className="points-grand-total">
+                <td colSpan={4}>Estimated Off Days (&divide; {points.points_per_off})</td>
+                <td><strong>{points.full_offs} offs</strong> + {points.remaining_points.toFixed(2)} pts remaining</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
 }
 
 function DataFreshnessBadge({ dataStatus }) {
@@ -218,12 +383,15 @@ function NameSelection({
   error,
   onRetry,
   onSelect,
+  onCompare,
   theme,
   onToggleTheme,
   dataStatus,
   recentNames,
 }) {
+  const [mode, setMode] = useState('single');
   const [selectedName, setSelectedName] = useState('');
+  const [selectedNameB, setSelectedNameB] = useState('');
   const [startMonth, setStartMonth] = useState('');
   const [endMonth, setEndMonth] = useState('');
 
@@ -238,7 +406,9 @@ function NameSelection({
   const endIdx = months.findIndex((m) => m.key === endMonth);
   const isRangeInvalid = startIdx >= 0 && endIdx >= 0 && startIdx > endIdx;
 
-  const readyToProceed = selectedName && startMonth && endMonth && !isRangeInvalid;
+  const readyToProceed = mode === 'single'
+    ? (selectedName && startMonth && endMonth && !isRangeInvalid)
+    : (selectedName && selectedNameB && selectedName !== selectedNameB && startMonth && endMonth && !isRangeInvalid);
 
   return (
     <div className="container">
@@ -272,7 +442,16 @@ function NameSelection({
             </div>
           ) : (
             <>
-              {recentNames.length > 0 && (
+              <div className="compare-mode-toggle">
+                <button className={mode === 'single' ? 'active' : ''} onClick={() => setMode('single')}>
+                  <FileText size={14} style={{ marginRight: '6px', verticalAlign: '-2px' }} />Single View
+                </button>
+                <button className={mode === 'compare' ? 'active' : ''} onClick={() => setMode('compare')}>
+                  <Users size={14} style={{ marginRight: '6px', verticalAlign: '-2px' }} />Compare Mode
+                </button>
+              </div>
+
+              {recentNames.length > 0 && mode === 'single' && (
                 <div className="recent-row">
                   {recentNames.map((name) => (
                     <button key={name} type="button" className="recent-pill" onClick={() => setSelectedName(name)}>
@@ -282,23 +461,70 @@ function NameSelection({
                 </div>
               )}
 
-              <div className="name-select-wrapper">
-                <label className="selection-label">
-                  <FileText size={14} style={{ color: 'var(--primary)' }} />
-                  Personnel Name
-                </label>
-                <select
-                  className="filter-select"
-                  value={selectedName}
-                  onChange={(e) => setSelectedName(e.target.value)}
-                  style={{ width: '100%', padding: '14px 18px', fontSize: '1.05rem' }}
-                >
-                  <option value="">Choose a name ({names.length} found)</option>
-                  {names.map((name) => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </select>
-              </div>
+              {mode === 'single' ? (
+                <div className="name-select-wrapper">
+                  <label className="selection-label">
+                    <FileText size={14} style={{ color: 'var(--primary)' }} />
+                    Personnel Name
+                  </label>
+                  <select
+                    className="filter-select"
+                    value={selectedName}
+                    onChange={(e) => setSelectedName(e.target.value)}
+                    style={{ width: '100%', padding: '14px 18px', fontSize: '1.05rem' }}
+                  >
+                    <option value="">Choose a name ({names.length} found)</option>
+                    {names.map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <>
+                  <div className="compare-name-grid">
+                    <div className="name-select-wrapper">
+                      <label className="selection-label">
+                        <span style={{ color: 'var(--primary)', fontWeight: 700 }}>A</span>
+                        &nbsp;Person A
+                      </label>
+                      <select
+                        className="filter-select"
+                        value={selectedName}
+                        onChange={(e) => setSelectedName(e.target.value)}
+                        style={{ width: '100%', padding: '12px 14px' }}
+                      >
+                        <option value="">Select Person A</option>
+                        {names.map((name) => (
+                          <option key={name} value={name}>{name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="name-select-wrapper">
+                      <label className="selection-label">
+                        <span style={{ color: 'var(--info)', fontWeight: 700 }}>B</span>
+                        &nbsp;Person B
+                      </label>
+                      <select
+                        className="filter-select"
+                        value={selectedNameB}
+                        onChange={(e) => setSelectedNameB(e.target.value)}
+                        style={{ width: '100%', padding: '12px 14px' }}
+                      >
+                        <option value="">Select Person B</option>
+                        {names.filter((n) => n !== selectedName).map((name) => (
+                          <option key={name} value={name}>{name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  {selectedName && selectedNameB && selectedName === selectedNameB && (
+                    <div className="validation-error">
+                      <AlertCircle size={16} />
+                      <span>Please select two different people to compare.</span>
+                    </div>
+                  )}
+                </>
+              )}
 
               <div className="date-range-row">
                 <div className="date-range-field">
@@ -348,14 +574,163 @@ function NameSelection({
               <button
                 className="selection-go-btn"
                 disabled={!readyToProceed}
-                onClick={() => onSelect(selectedName, startMonth, endMonth)}
+                onClick={() => {
+                  if (mode === 'compare') {
+                    onCompare(selectedName, selectedNameB, startMonth, endMonth);
+                  } else {
+                    onSelect(selectedName, startMonth, endMonth);
+                  }
+                }}
               >
-                {selectedName ? `Load Dashboard for ${selectedName}` : 'Select a person to continue'}
+                {mode === 'compare'
+                  ? (readyToProceed ? `Compare ${selectedName} vs ${selectedNameB}` : 'Select two people to compare')
+                  : (selectedName ? `Load Dashboard for ${selectedName}` : 'Select a person to continue')
+                }
               </button>
             </>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ComparisonDiffBadge({ a, b, label }) {
+  const diff = a - b;
+  if (diff === 0) return <span className="compare-diff equal">=</span>;
+  return (
+    <span className={`compare-diff ${diff > 0 ? 'more' : 'less'}`}>
+      {diff > 0 ? `+${diff}` : diff} {label || ''}
+    </span>
+  );
+}
+
+function ComparisonView({ data, onBack, theme, onToggleTheme }) {
+  if (!data || data.length !== 2) return null;
+
+  const [a, b] = data;
+  const nameA = a.metadata?.name || 'Person A';
+  const nameB = b.metadata?.name || 'Person B';
+
+  const statRows = [
+    { label: 'Total Duties', keyA: a.summary.total_duties, keyB: b.summary.total_duties },
+    { label: 'Guard', keyA: a.summary.total_guard, keyB: b.summary.total_guard },
+    { label: 'BDS', keyA: a.summary.total_bds, keyB: b.summary.total_bds },
+    { label: 'Weekdays', keyA: a.summary.weekdays, keyB: b.summary.weekdays },
+    { label: 'Fridays', keyA: a.summary.fridays, keyB: b.summary.fridays },
+    { label: 'Weekends', keyA: a.summary.weekends, keyB: b.summary.weekends },
+  ];
+
+  const mergedDuties = [
+    ...(a.duties || []).map((d) => ({ ...d, _person: 'a', _name: nameA })),
+    ...(b.duties || []).map((d) => ({ ...d, _person: 'b', _name: nameB })),
+  ].sort((x, y) => new Date(x.date) - new Date(y.date));
+
+  return (
+    <div className="compare-container container">
+      <div className="compare-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button className="back-btn" onClick={onBack}>
+            <ArrowLeft size={16} />
+            <span>Back</span>
+          </button>
+          <h1>
+            <Users size={22} style={{ verticalAlign: '-4px', marginRight: '8px' }} />
+            {nameA} vs {nameB}
+          </h1>
+        </div>
+        <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+      </div>
+
+      <div className="compare-stat-grid">
+        <div className="compare-person-card">
+          <h3><span className="person-label-a">{nameA}</span></h3>
+          {statRows.map((row) => (
+            <div className="compare-stat-row" key={row.label}>
+              <span className="stat-name">{row.label}</span>
+              <span className="stat-val">
+                {row.keyA}
+                <ComparisonDiffBadge a={row.keyA} b={row.keyB} />
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className="compare-person-card">
+          <h3><span className="person-label-b">{nameB}</span></h3>
+          {statRows.map((row) => (
+            <div className="compare-stat-row" key={row.label}>
+              <span className="stat-name">{row.label}</span>
+              <span className="stat-val">
+                {row.keyB}
+                <ComparisonDiffBadge a={row.keyB} b={row.keyA} />
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {a.points && b.points && (
+        <section className="compare-points-section">
+          <h3>
+            <Award size={16} style={{ color: 'var(--warning)', verticalAlign: '-2px', marginRight: '8px' }} />
+            Points Comparison
+          </h3>
+          <div className="compare-points-grid">
+            <div className="compare-points-card person-a">
+              <span className="compare-points-value">{a.points.grand_total_points}</span>
+              <span className="compare-points-sub">{nameA} · {a.points.full_offs} off(s) earned</span>
+            </div>
+            <div className="compare-points-card person-b">
+              <span className="compare-points-value">{b.points.grand_total_points}</span>
+              <span className="compare-points-sub">{nameB} · {b.points.full_offs} off(s) earned</span>
+            </div>
+          </div>
+        </section>
+      )}
+
+      <section className="compare-timeline-section">
+        <h3>
+          <Calendar size={16} style={{ color: 'var(--primary)', verticalAlign: '-2px', marginRight: '8px' }} />
+          Merged Timeline ({mergedDuties.length} duties)
+        </h3>
+        <div style={{ overflowX: 'auto' }}>
+          <table>
+            <thead>
+              <tr>
+                <th>Person</th>
+                <th>Date</th>
+                <th>Day</th>
+                <th>Duty Type</th>
+                <th>Entry Details</th>
+                <th>Points</th>
+              </tr>
+            </thead>
+            <tbody>
+              {mergedDuties.map((duty, i) => (
+                <tr key={`${duty._person}-${duty.date}-${duty.duty_type}-${i}`} className={`${duty._person === 'a' ? 'person-a-row' : 'person-b-row'}`}>
+                  <td>
+                    <span className={`person-tag ${duty._person}`}>{duty._name}</span>
+                  </td>
+                  <td style={{ fontWeight: 500 }}>{duty.date_label}</td>
+                  <td>{duty.day}</td>
+                  <td>
+                    <span className={`badge badge-${duty.duty_type.toLowerCase()}`}>{duty.duty_type}</span>
+                  </td>
+                  <td style={{ fontWeight: 600 }}>{duty.duty_display}</td>
+                  <td style={{ fontWeight: 600, color: duty.points > 0 ? 'var(--warning)' : 'var(--text-muted)' }}>
+                    {duty.points > 0 ? `+${duty.points.toFixed(2)}` : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <footer>
+        <p>2026 FOE Duty Checker dashboard - React + Vite + Flask</p>
+      </footer>
     </div>
   );
 }
@@ -375,6 +750,7 @@ function App() {
   const [recentNames, setRecentNames] = useState(getStoredRecentNames);
 
   const [data, setData] = useState(null);
+  const [compareData, setCompareData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState(null);
@@ -483,37 +859,87 @@ function App() {
     handleSelectName(name, start, end);
   }, [handleSelectName, initLoading, months, names, urlSelectionApplied]);
 
-  const handleRefresh = async () => {
+  const handleRefresh = () => {
     if (!activeName || refreshing) return;
     setRefreshing(true);
-    try {
-      const refreshRes = await fetch('/api/refresh', { method: 'POST' });
-      const refreshJson = await refreshRes.json();
-      if (refreshJson.data_status) setDataStatus(refreshJson.data_status);
-      setToast({ type: 'success', message: refreshJson.message || 'Refresh started in the background.' });
 
-      for (let attempt = 0; attempt < 40; attempt += 1) {
-        await delay(1500);
-        const statusRes = await fetch('/api/status');
-        const statusJson = await statusRes.json();
-        setDataStatus(statusJson);
-        if (!statusJson.refreshing) break;
+    const es = new EventSource('/api/refresh/stream');
+
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        
+        if (data.phase === 'rate_limited') {
+          es.close();
+          setRefreshing(false);
+          setToast({ type: 'error', message: data.message || 'Refresh is on cooldown.' });
+          return;
+        }
+
+        setDataStatus((prev) => ({
+          ...prev,
+          refreshing: data.refreshing,
+          ready: data.ready,
+          progress: {
+            phase: data.phase,
+            percent: data.percent,
+            message: data.message,
+            completed_sheets: data.completed_sheets,
+            total_sheets: data.total_sheets
+          }
+        }));
+
+        if (data.phase === 'done' || !data.refreshing) {
+          es.close();
+          fetchDuties(activeName, activeStart, activeEnd, { silent: true });
+          setRefreshing(false);
+          setToast({ type: 'success', message: 'Data refresh complete.' });
+        }
+      } catch (err) {
+        console.error('SSE parse error:', err);
       }
+    };
 
-      await fetchDuties(activeName, activeStart, activeEnd, { silent: true });
-    } catch (err) {
-      setToast({ type: 'error', message: `Refresh failed: ${err.message}` });
-    } finally {
+    es.onerror = () => {
+      es.close();
       setRefreshing(false);
-    }
+      setToast({ type: 'error', message: 'Refresh stream connection lost.' });
+      fetchDuties(activeName, activeStart, activeEnd, { silent: true });
+    };
   };
 
   const handleBack = () => {
     setScreen('select');
     setData(null);
+    setCompareData(null);
     setActiveName('');
     window.history.replaceState(null, '', window.location.pathname);
   };
+
+  const handleCompare = useCallback(async (nameA, nameB, start, end) => {
+    setLoading(true);
+    setScreen('compare');
+    try {
+      const res = await fetch('/api/compare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ names: [nameA, nameB], start, end }),
+      });
+      const json = await res.json();
+      if (json.data_status) setDataStatus(json.data_status);
+      if (json.error) {
+        setToast({ type: 'error', message: json.error });
+        setScreen('select');
+      } else {
+        setCompareData(json.comparison);
+      }
+    } catch (err) {
+      setToast({ type: 'error', message: `Compare failed: ${err.message}` });
+      setScreen('select');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   const duties = data?.duties || [];
 
@@ -573,10 +999,33 @@ function App() {
           error={initError}
           onRetry={() => window.location.reload()}
           onSelect={handleSelectName}
+          onCompare={handleCompare}
           theme={theme}
           onToggleTheme={toggleTheme}
           dataStatus={dataStatus}
           recentNames={recentNames.filter((name) => names.includes(name))}
+        />
+        <Toast toast={toast} onDismiss={() => setToast(null)} />
+      </>
+    );
+  }
+
+  if (screen === 'compare') {
+    if (loading) {
+      return (
+        <div className="container" style={{ textAlign: 'center', padding: '80px 0' }}>
+          <RefreshCw size={36} style={{ color: 'var(--primary)', animation: 'spin 1s linear infinite' }} />
+          <p style={{ marginTop: '16px', color: 'var(--text-muted)' }}>Loading comparison data...</p>
+        </div>
+      );
+    }
+    return (
+      <>
+        <ComparisonView
+          data={compareData}
+          onBack={handleBack}
+          theme={theme}
+          onToggleTheme={toggleTheme}
         />
         <Toast toast={toast} onDismiss={() => setToast(null)} />
       </>
@@ -712,6 +1161,8 @@ function App() {
         </div>
       </section>
 
+      <DutyPointsSection points={data?.points} />
+
       <section className="filter-panel">
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '18px', borderBottom: '1px solid var(--filter-divider)', paddingBottom: '10px' }}>
           <SlidersHorizontal size={16} style={{ color: 'var(--primary)' }} />
@@ -797,6 +1248,7 @@ function App() {
                   <th>Day Category</th>
                   <th>Duty Type</th>
                   <th>Entry Details</th>
+                  <th>Points</th>
                   <th>Source Reference</th>
                 </tr>
               </thead>
@@ -817,6 +1269,9 @@ function App() {
                       </span>
                     </td>
                     <td style={{ fontWeight: 600 }}>{duty.duty_display}</td>
+                    <td style={{ fontWeight: 600, color: duty.points > 0 ? 'var(--warning)' : 'var(--text-muted)' }}>
+                      {duty.points > 0 ? `+${duty.points.toFixed(2)}` : '—'}
+                    </td>
                     <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                       Sheet: {duty.sheet} (Row: {duty.row})
                     </td>

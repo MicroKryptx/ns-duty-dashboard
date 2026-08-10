@@ -827,3 +827,498 @@ footer {
 @media (max-width: 480px) {
   .stats-grid { grid-template-columns: 1fr; }
 }
+
+
+/* ── Duty Points Section ── */
+
+.points-section {
+  background: var(--card);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding: 28px;
+  margin-bottom: 24px;
+}
+
+.points-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--filter-divider);
+}
+
+.points-header h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.points-view-toggle {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.points-view-toggle button {
+  padding: 6px 16px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.points-view-toggle button:hover {
+  background: rgba(139, 92, 246, 0.1);
+}
+
+.points-view-toggle button.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+/* Simplified view */
+.points-summary-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.points-big-card {
+  background: var(--primary-glow);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 12px;
+  padding: 24px;
+  text-align: center;
+  transition: var(--transition);
+}
+
+.points-big-card:hover {
+  border-color: rgba(139, 92, 246, 0.4);
+  transform: translateY(-2px);
+}
+
+.points-big-card.offs {
+  background: var(--success-bg);
+  border-color: var(--success-border);
+}
+
+.points-big-card.offs:hover {
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+.points-big-value {
+  display: block;
+  font-size: 2.4rem;
+  font-weight: 800;
+  background: var(--h1-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.points-big-card.offs .points-big-value {
+  background: linear-gradient(to right, #10b981, #34d399);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.points-big-label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Progress bar */
+.points-progress-section {
+  margin-bottom: 20px;
+}
+
+.points-progress-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.points-progress-track {
+  height: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.points-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--success));
+  border-radius: 999px;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.points-progress-hint {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+  text-align: right;
+}
+
+/* Quick breakdown row */
+.points-quick-row {
+  display: flex;
+  gap: 24px;
+}
+
+.points-quick-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* Detailed table */
+.points-detailed {
+  overflow-x: auto;
+}
+
+.points-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.points-table th {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  background: var(--th-bg);
+  border-bottom: 1px solid var(--row-border);
+}
+
+.points-table td {
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  border-bottom: 1px solid var(--row-border);
+}
+
+.points-row:hover td {
+  background: var(--row-hover);
+}
+
+.points-subtotal td {
+  font-size: 0.85rem;
+  background: rgba(139, 92, 246, 0.05);
+  border-top: 1px solid var(--card-border);
+}
+
+.points-grand-total td {
+  font-size: 0.9rem;
+  font-weight: 700;
+  background: rgba(16, 185, 129, 0.08);
+  border-top: 2px solid var(--success-border);
+}
+
+@media (max-width: 640px) {
+  .points-summary-cards { grid-template-columns: 1fr; }
+  .points-quick-row { flex-direction: column; gap: 8px; }
+  .points-header { flex-direction: column; gap: 12px; align-items: flex-start; }
+}
+
+
+/* ── Multi-User Comparison ── */
+
+.compare-mode-toggle {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 20px;
+  width: 100%;
+}
+
+.compare-mode-toggle button {
+  flex: 1;
+  padding: 10px 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.compare-mode-toggle button:hover {
+  background: rgba(139, 92, 246, 0.1);
+}
+
+.compare-mode-toggle button.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.compare-name-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.compare-name-grid .name-select-wrapper {
+  margin-bottom: 0;
+}
+
+.compare-vs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 1.1rem;
+  color: var(--primary);
+  padding: 4px 0;
+}
+
+/* Comparison View */
+.compare-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.compare-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.compare-header h1 {
+  font-size: 1.4rem;
+  background: var(--h1-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.compare-stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.compare-person-card {
+  background: var(--card);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding: 24px;
+}
+
+.compare-person-card h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--filter-divider);
+}
+
+.compare-person-card .person-label-a {
+  color: var(--primary);
+}
+
+.compare-person-card .person-label-b {
+  color: var(--info);
+}
+
+.compare-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--row-border);
+}
+
+.compare-stat-row:last-child {
+  border-bottom: none;
+}
+
+.compare-stat-row .stat-name {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.compare-stat-row .stat-val {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.compare-diff {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+  margin-left: 8px;
+}
+
+.compare-diff.more {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--success);
+}
+
+.compare-diff.less {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--danger);
+}
+
+.compare-diff.equal {
+  background: rgba(139, 92, 246, 0.1);
+  color: var(--text-muted);
+}
+
+/* Points comparison */
+.compare-points-section {
+  background: var(--card);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.compare-points-section h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--filter-divider);
+}
+
+.compare-points-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.compare-points-card {
+  text-align: center;
+  padding: 16px;
+  border-radius: 12px;
+}
+
+.compare-points-card.person-a {
+  background: var(--primary-glow);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+}
+
+.compare-points-card.person-b {
+  background: rgba(59, 130, 246, 0.06);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.compare-points-value {
+  font-size: 2rem;
+  font-weight: 800;
+  display: block;
+}
+
+.compare-points-card.person-a .compare-points-value {
+  background: var(--h1-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.compare-points-card.person-b .compare-points-value {
+  background: linear-gradient(to right, #3b82f6, #60a5fa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.compare-points-sub {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* Timeline table */
+.compare-timeline-section {
+  background: var(--card);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.compare-timeline-section h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--filter-divider);
+}
+
+.compare-timeline-section table {
+  width: 100%;
+}
+
+.compare-timeline-section tr.person-a-row td {
+  border-left: 3px solid var(--primary);
+}
+
+.compare-timeline-section tr.person-b-row td {
+  border-left: 3px solid var(--info);
+}
+
+.person-tag {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.person-tag.a {
+  background: rgba(139, 92, 246, 0.15);
+  color: var(--primary);
+}
+
+.person-tag.b {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--info);
+}
+
+@media (max-width: 768px) {
+  .compare-stat-grid { grid-template-columns: 1fr; }
+  .compare-points-grid { grid-template-columns: 1fr; }
+  .compare-name-grid { grid-template-columns: 1fr; }
+  .compare-header { flex-direction: column; align-items: flex-start; }
+}
+
