@@ -5,3 +5,4 @@ _parsing.lock
 *.tmp
 dashboard/node_modules/
 dashboard/.vite/
+_cached_foe_data.xlsx
