@@ -152,7 +152,7 @@ Select two personnel and see their duty fairness side-by-side:
 | **Frontend** | React + Vite | 19 / 8 |
 | **Icons** | Lucide React | 1.17 |
 | **WSGI Server** | Gunicorn (gthread) | 23.0 |
-| **Deployment** | Render (Free Tier) | — |
+| **Deployment** | Railway | — |
 
 ---
 
@@ -256,21 +256,21 @@ All configuration is done via environment variables with sensible defaults:
 
 ## 🌐 Deployment
 
-### Render (Recommended)
+### Railway (Recommended)
 
-The repository includes a `render.yaml` for one-click deployment:
+The repository is configured for seamless deployment on **Railway**:
 
-1. Push to GitHub
-2. Connect your repo in [Render Dashboard](https://dashboard.render.com)
-3. Render auto-detects `render.yaml` and deploys
+1. Push your repository to GitHub
+2. Create a new service on [Railway](https://railway.app) and select your GitHub repository
+3. Railway automatically detects the `Procfile` and root `package.json` build script
 
-**Build command:** `pip install -r requirements.txt && cd dashboard && npm ci --include=dev && npm run build`
+**Build Command:** `pip install -r requirements.txt && cd dashboard && npm ci --include=dev && npm run build`
 
-**Start command:** `gunicorn server:app --config gunicorn.conf.py --bind 0.0.0.0:$PORT`
+**Start Command:** `gunicorn server:app --config gunicorn.conf.py --bind 0.0.0.0:$PORT`
 
-### Railway / Heroku
+### Render / Heroku / Other Platforms
 
-The included `Procfile` works with any platform that supports it:
+The included `render.yaml` and `Procfile` allow instant deployment on Render, Heroku, or any platform supporting WSGI:
 
 ```
 web: gunicorn server:app --config gunicorn.conf.py --bind 0.0.0.0:$PORT
