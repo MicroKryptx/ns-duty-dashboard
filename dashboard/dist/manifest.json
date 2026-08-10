@@ -1,0 +1,12 @@
+{
+  "name": "FOE Duty Dashboard",
+  "short_name": "Duty Dashboard",
+  "description": "Consolidated duty report viewer for FOE personnel",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#8b5cf6",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
