@@ -1,6 +1,4 @@
-# FOE Duty Dashboard - Codex Optimized Copy
-
-This `_codex` folder is an isolated optimized copy. The original app one folder up is unchanged.
+# FOE Duty Dashboard 
 
 ## What changed
 
